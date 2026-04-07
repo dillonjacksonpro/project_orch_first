@@ -1,0 +1,23 @@
+# Build artifacts
+build/
+runs/
+
+# Local run config (example is tracked; user copy is not)
+run.cfg
+
+# Claude files and directories
+.claude/
+.claudeignore
+
+# Hidden directories
+.hidden/
+
+# Internal docs (only README.md is tracked)
+CLAUDE.md
+cpp_coding_guidelines.md
+design.md
+handoff.md
+plan/
+
+# Scratch / notes
+todo.txt

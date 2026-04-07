@@ -1,0 +1,24 @@
+# run.cfg.example — copy to run.cfg and adjust values before use.
+# Run from the repo root: bash run.sh run.cfg
+
+# Path to the directory of input files (required).
+# Relative paths are resolved from the current working directory.
+DATA_DIR=tests/e2e/data
+
+# Number of MPI ranks (required).
+SLURM_NTASKS=2
+
+# Threads available per rank (required).
+# Rank 0 reserves one thread for the comm thread, so it runs N-1 workers.
+# Non-root ranks run N workers (comm thread shares a core).
+# Minimum value: 2 (so rank 0 has at least 1 worker).
+SLURM_CPUS_PER_TASK=4
+
+# Base directory for run output (optional, default: runs/).
+# Each invocation creates a timestamped subdirectory:
+#   runs/20260407_143022/
+#     config.cfg    -- copy of this file
+#     stdout.txt    -- orchestrator output (on_output results)
+#     stderr.txt    -- orchestrator lifecycle logs
+#     exit_code.txt -- numeric exit code of srun
+OUTPUT_ROOT=runs
