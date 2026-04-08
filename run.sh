@@ -27,6 +27,7 @@ fi
 DATA_DIR=""
 SLURM_NTASKS=""
 SLURM_CPUS_PER_TASK=""
+SLURM_PARTITION=""
 OUTPUT_ROOT="runs"
 
 while IFS= read -r line; do
@@ -45,6 +46,7 @@ while IFS= read -r line; do
         DATA_DIR)             DATA_DIR="$value" ;;
         SLURM_NTASKS)         SLURM_NTASKS="$value" ;;
         SLURM_CPUS_PER_TASK)  SLURM_CPUS_PER_TASK="$value" ;;
+        SLURM_PARTITION)      SLURM_PARTITION="$value" ;;
         OUTPUT_ROOT)          OUTPUT_ROOT="$value" ;;
         *) echo "warning: unrecognised config key: $key" >&2 ;;
     esac
@@ -87,8 +89,13 @@ run_dir="$(cd "$run_dir" && pwd)"
 
 cp "$config_file" "$run_dir/config.cfg"
 
+partition_flag=""
+if [ -n "$SLURM_PARTITION" ]; then
+    partition_flag="--partition=$SLURM_PARTITION"
+fi
+
 echo "Run directory: $run_dir"
-echo "Launching: srun -n $SLURM_NTASKS --export=SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK ./build/orchestrator --dir $DATA_DIR"
+echo "Launching: srun -n $SLURM_NTASKS ${partition_flag:+$partition_flag }--export=SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK ./build/orchestrator --dir $DATA_DIR"
 echo "---"
 
 # ---------------------------------------------------------------------------
@@ -96,6 +103,7 @@ echo "---"
 # ---------------------------------------------------------------------------
 exit_code=0
 srun -n "$SLURM_NTASKS" \
+    ${partition_flag:+$partition_flag} \
     --export=SLURM_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK" \
     ./build/orchestrator --dir "$DATA_DIR" \
     > >(tee "$run_dir/stdout.txt") \

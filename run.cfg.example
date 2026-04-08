@@ -8,6 +8,9 @@ DATA_DIR=tests/e2e/data
 # Number of MPI ranks (required).
 SLURM_NTASKS=2
 
+# SLURM partition to submit to (optional; omit to use the cluster default).
+# SLURM_PARTITION=compute
+
 # Threads available per rank (required).
 # Rank 0 reserves one thread for the comm thread, so it runs N-1 workers.
 # Non-root ranks run N workers (comm thread shares a core).
