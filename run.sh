@@ -95,7 +95,7 @@ if [ -n "$SLURM_PARTITION" ]; then
 fi
 
 echo "Run directory: $run_dir"
-echo "Launching: srun -n $SLURM_NTASKS ${partition_flag:+$partition_flag }--export=SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK ./build/orchestrator --dir $DATA_DIR"
+echo "Launching: srun -n $SLURM_NTASKS --cpus-per-task=$SLURM_CPUS_PER_TASK ${partition_flag:+$partition_flag }--export=SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK ./build/orchestrator --dir $DATA_DIR"
 echo "---"
 
 # ---------------------------------------------------------------------------
@@ -103,6 +103,7 @@ echo "---"
 # ---------------------------------------------------------------------------
 exit_code=0
 srun -n "$SLURM_NTASKS" \
+    --cpus-per-task="$SLURM_CPUS_PER_TASK" \
     ${partition_flag:+$partition_flag} \
     --export=SLURM_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK" \
     ./build/orchestrator --dir "$DATA_DIR" \
