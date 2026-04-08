@@ -15,6 +15,15 @@ set -euo pipefail
 # SLURM_CPUS_PER_TASK is set automatically by SLURM from --cpus-per-task.
 # ---------------------------------------------------------------------------
 if [ -n "${SLURM_JOB_ID:-}" ]; then
+    # RUN_DIR and DATA_DIR must be injected via --export at submission time.
+    # If they're missing, the script was run directly on a compute node instead
+    # of being submitted through the login-node path.
+    if [ -z "${RUN_DIR:-}" ] || [ -z "${DATA_DIR:-}" ]; then
+        echo "error: run.sh must be run from a login node, not directly on a compute node." >&2
+        echo "       Log out of this session and run: ./run.sh <config-file>" >&2
+        exit 1
+    fi
+
     # SLURM_MEM_PER_CPU (from partition DefMemPerCPU) and SLURM_MEM_PER_NODE
     # are mutually exclusive from srun's perspective — drop the node-level one.
     unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
@@ -108,7 +117,12 @@ fi
 # Create timestamped run directory
 # ---------------------------------------------------------------------------
 timestamp="$(date +%Y%m%d_%H%M%S)"
-run_dir="$(pwd)/${OUTPUT_ROOT}/${timestamp}"
+# Support absolute OUTPUT_ROOT as well as relative.
+if [ "${OUTPUT_ROOT#/}" = "$OUTPUT_ROOT" ]; then
+    run_dir="$(pwd)/${OUTPUT_ROOT}/${timestamp}"
+else
+    run_dir="${OUTPUT_ROOT}/${timestamp}"
+fi
 mkdir -p "$run_dir"
 cp "$config_file" "$run_dir/config.cfg"
 
@@ -116,21 +130,25 @@ cp "$config_file" "$run_dir/config.cfg"
 # Submit this script to sbatch with the correct resource allocation.
 # sbatch re-runs the script inside the job; SLURM_JOB_ID triggers the
 # in-job phase above. RUN_DIR and DATA_DIR are passed via --export=ALL,...
+# --nodes=1 keeps all ranks on one node, avoiding whole-node allocation
+# under OverSubscribe=NO when tasks would otherwise spread across nodes.
 # ---------------------------------------------------------------------------
 partition_flag=""
 if [ -n "$SLURM_PARTITION" ]; then
     partition_flag="--partition=$SLURM_PARTITION"
 fi
 
+# --parsable outputs "jobid" or "jobid;cluster" on federated setups; keep only the ID.
 job_id=$(sbatch --parsable \
+    --nodes=1 \
     -n "$SLURM_NTASKS" \
     --cpus-per-task="$SLURM_CPUS_PER_TASK" \
     ${partition_flag:+$partition_flag} \
     --chdir="$(pwd)" \
-    --export=ALL,RUN_DIR="$run_dir",DATA_DIR="$DATA_DIR" \
+    --export="ALL,RUN_DIR=$run_dir,DATA_DIR=$DATA_DIR" \
     --output="$run_dir/job.log" \
     --error="$run_dir/job.log" \
-    "$(realpath "$0")" "$config_file")
+    "$(realpath "$0")" "$config_file" | cut -d';' -f1)
 
 echo "Job ID:       $job_id"
 echo "Run dir:      $run_dir"
