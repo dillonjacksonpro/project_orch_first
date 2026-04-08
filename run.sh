@@ -1,13 +1,40 @@
 #!/usr/bin/env bash
 # Runner script for the HPC orchestrator.
-# Usage: bash run.sh <config-file>
+# Usage: ./run.sh <config-file>
 #
-# Reads a key=value config file, launches the orchestrator via srun, and saves
-# stdout, stderr, and the exit code to a timestamped directory under OUTPUT_ROOT.
+# Run from the repo root on a login node. Reads a key=value config file,
+# then submits itself to SLURM via sbatch with the correct resource flags.
+# When the job runs, srun launches the orchestrator with a properly-sized
+# allocation. Output goes to a timestamped subdirectory under OUTPUT_ROOT.
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Argument validation
+# In-job phase
+# Reached when sbatch re-runs this script inside the allocation.
+# RUN_DIR and DATA_DIR are injected via --export at submission time;
+# SLURM_CPUS_PER_TASK is set automatically by SLURM from --cpus-per-task.
+# ---------------------------------------------------------------------------
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+    # SLURM_MEM_PER_CPU (from partition DefMemPerCPU) and SLURM_MEM_PER_NODE
+    # are mutually exclusive from srun's perspective — drop the node-level one.
+    unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
+
+    echo "Job $SLURM_JOB_ID running on $(hostname)"
+
+    exit_code=0
+    srun --export=ALL \
+        ./build/orchestrator --dir "$DATA_DIR" \
+        > "$RUN_DIR/stdout.txt" \
+        2> "$RUN_DIR/stderr.txt" \
+        || exit_code=$?
+
+    echo "$exit_code" > "$RUN_DIR/exit_code.txt"
+    echo "Exit code: $exit_code"
+    exit "$exit_code"
+fi
+
+# ---------------------------------------------------------------------------
+# Login-node phase
 # ---------------------------------------------------------------------------
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <config-file>" >&2
@@ -15,7 +42,6 @@ if [ $# -ne 1 ]; then
 fi
 
 config_file="$1"
-
 
 if [ ! -f "$config_file" ]; then
     echo "error: config file not found: $config_file" >&2
@@ -82,46 +108,31 @@ fi
 # Create timestamped run directory
 # ---------------------------------------------------------------------------
 timestamp="$(date +%Y%m%d_%H%M%S)"
-run_dir="${OUTPUT_ROOT}/${timestamp}"
+run_dir="$(pwd)/${OUTPUT_ROOT}/${timestamp}"
 mkdir -p "$run_dir"
-
-# Resolve to absolute path for cleaner output.
-run_dir="$(cd "$run_dir" && pwd)"
-
 cp "$config_file" "$run_dir/config.cfg"
 
+# ---------------------------------------------------------------------------
+# Submit this script to sbatch with the correct resource allocation.
+# sbatch re-runs the script inside the job; SLURM_JOB_ID triggers the
+# in-job phase above. RUN_DIR and DATA_DIR are passed via --export=ALL,...
+# ---------------------------------------------------------------------------
 partition_flag=""
 if [ -n "$SLURM_PARTITION" ]; then
     partition_flag="--partition=$SLURM_PARTITION"
 fi
 
-echo "Run directory: $run_dir"
-echo "Launching: srun -n $SLURM_NTASKS --cpus-per-task=$SLURM_CPUS_PER_TASK ${partition_flag:+$partition_flag }--export=SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK ./build/orchestrator --dir $DATA_DIR"
-echo "---"
-
-# ---------------------------------------------------------------------------
-# Run srun — tee stdout and stderr to screen and separate files
-# ---------------------------------------------------------------------------
-# SLURM_MEM_PER_CPU (set by partition DefMemPerCPU) and SLURM_MEM_PER_NODE are
-# mutually exclusive from srun's perspective. Unset the node-level variable so
-# only the per-CPU one governs the step.
-unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
-
-exit_code=0
-srun -n "$SLURM_NTASKS" \
+job_id=$(sbatch --parsable \
+    -n "$SLURM_NTASKS" \
     --cpus-per-task="$SLURM_CPUS_PER_TASK" \
     ${partition_flag:+$partition_flag} \
-    --export=SLURM_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK" \
-    ./build/orchestrator --dir "$DATA_DIR" \
-    > >(tee "$run_dir/stdout.txt") \
-    2> >(tee "$run_dir/stderr.txt" >&2) \
-    || exit_code=$?   # capture non-zero exit without triggering set -e
-wait   # flush tee subprocesses before writing exit_code.txt
+    --chdir="$(pwd)" \
+    --export=ALL,RUN_DIR="$run_dir",DATA_DIR="$DATA_DIR" \
+    --output="$run_dir/job.log" \
+    --error="$run_dir/job.log" \
+    "$(realpath "$0")" "$config_file")
 
-echo "$exit_code" > "$run_dir/exit_code.txt"
-
-echo "---"
-echo "Exit code: $exit_code"
-echo "Output saved to: $run_dir"
-
-exit "$exit_code"
+echo "Job ID:       $job_id"
+echo "Run dir:      $run_dir"
+echo "stdout:       tail -f $run_dir/stdout.txt"
+echo "stderr/logs:  tail -f $run_dir/job.log"
