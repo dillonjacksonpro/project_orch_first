@@ -16,6 +16,7 @@ fi
 
 config_file="$1"
 
+
 if [ ! -f "$config_file" ]; then
     echo "error: config file not found: $config_file" >&2
     exit 1
@@ -101,6 +102,11 @@ echo "---"
 # ---------------------------------------------------------------------------
 # Run srun — tee stdout and stderr to screen and separate files
 # ---------------------------------------------------------------------------
+# SLURM_MEM_PER_CPU (set by partition DefMemPerCPU) and SLURM_MEM_PER_NODE are
+# mutually exclusive from srun's perspective. Unset the node-level variable so
+# only the per-CPU one governs the step.
+unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
+
 exit_code=0
 srun -n "$SLURM_NTASKS" \
     --cpus-per-task="$SLURM_CPUS_PER_TASK" \
