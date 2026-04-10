@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=hpc_orch
+#SBATCH --partition=rss-class
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
@@ -13,6 +14,15 @@
 # SLURM resources are set via #SBATCH directives above (overridable on the
 # sbatch command line). The config file controls DATA_DIR and OUTPUT_ROOT only.
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Resource defaults — mirror the #SBATCH directives above so the script works
+# when run directly (bash ignores #SBATCH lines). sbatch sets these via SLURM;
+# the :- fallbacks only apply when the variables are unset.
+# ---------------------------------------------------------------------------
+SLURM_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK:-4}"
+SLURM_NNODES="${SLURM_NNODES:-4}"
+SLURM_JOB_ID="${SLURM_JOB_ID:-local}"
 
 # ---------------------------------------------------------------------------
 # Argument validation and config parsing
