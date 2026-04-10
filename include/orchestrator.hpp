@@ -23,11 +23,10 @@
 #include <tuple>
 #include <vector>
 
-// Non-template helper: reads SLURM env vars, validates values, populates out-params.
+// Non-template helper: reads SLURM_CPUS_PER_TASK, validates the value, populates cpus_per_task.
+// node_count and node_id are derived from MPI (invariant: --ntasks-per-node=1).
 // Calls FATAL_MPI(rank, ...) on invalid values.
-// world_size is reserved for future SLURM_NTASKS cross-checking.
-void slurm_read_env(int rank, int world_size,
-                    int& cpus_per_task, int& node_count, int& node_id);
+void slurm_read_env(int rank, int& cpus_per_task);
 
 // Primary template — never instantiated directly; serves as the declaration hook
 // that the partial specialization below specializes.
@@ -108,7 +107,12 @@ private:
         MPI_Comm_size(MPI_COMM_WORLD, &world_size_);
 
         // Delegate env parsing and FATAL_MPI validation to the non-template free function.
-        slurm_read_env(rank_, world_size_, cpus_per_task_, node_count_, node_id_);
+        slurm_read_env(rank_, cpus_per_task_);
+
+        // Invariant: --ntasks-per-node=1 means exactly one MPI rank per node.
+        // Under this invariant MPI rank == SLURM node index, world_size == node count.
+        node_count_ = world_size_;
+        node_id_    = rank_;
 
         // Root loses one CPU slot to the comm thread; non-root does not.
         num_workers_   = (rank_ == 0) ? cpus_per_task_ - 1 : cpus_per_task_;

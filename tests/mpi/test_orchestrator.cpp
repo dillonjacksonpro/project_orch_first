@@ -13,10 +13,10 @@
 // terminates the test runner; subprocess isolation would be needed):
 //   SLURM_CPUS_PER_TASK <= 0 || > 65536:
 //     "[rank N] [FATAL] SLURM_CPUS_PER_TASK out of range: <value>"
-//   SLURM_NNODES <= 0:
-//     "[rank N] [FATAL] SLURM_NNODES out of range: <value>"
-//   rank 0 with SLURM_CPUS_PER_TASK == 1:
-//     "[rank N] [FATAL] rank 0 requires SLURM_CPUS_PER_TASK >= 2 ..."
+//
+// The rank-0 >= 2 CPUs requirement is enforced in run.sh before srun is invoked.
+// node_count and node_id are derived from MPI (world_size and rank) under the
+// --ntasks-per-node=1 invariant — no SLURM_NNODES or SLURM_NODEID are read.
 //
 // MPI threading level: the fatal-exit path for provided < MPI_THREAD_SERIALIZED
 // is untestable without a crippled MPI installation; documented for code review.
@@ -99,9 +99,9 @@ struct MockJob : public JobInterface<TestRecord> {
 // ---------------------------------------------------------------------------
 // This is not a separate test case because it would require another MPI_Init.
 // The fallback logic is exercised implicitly when mpirun runs outside SLURM
-// (the SLURM_* vars are absent). Verified by inspection that slurm_read_env
-// falls back to hardware_concurrency() for cpus_per_task, 1 for node_count,
-// and rank for node_id.
+// (SLURM_CPUS_PER_TASK is absent). Verified by inspection that slurm_read_env
+// falls back to hardware_concurrency() for cpus_per_task. node_count and
+// node_id are derived from MPI world_size and rank, not env vars.
 
 // ---------------------------------------------------------------------------
 // main

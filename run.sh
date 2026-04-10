@@ -82,6 +82,13 @@ cp "$config_file" "$run_dir/config.cfg"
 # SLURM_MEM_PER_CPU and SLURM_MEM_PER_NODE are mutually exclusive for srun.
 unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
 
+# Validate before launch: orchestrator root reserves one CPU slot for the comm
+# thread, requiring SLURM_CPUS_PER_TASK >= 2.
+if [ "${SLURM_CPUS_PER_TASK}" -lt 2 ]; then
+    echo "error: SLURM_CPUS_PER_TASK must be >= 2 (orchestrator reserves one slot for the comm thread)" >&2
+    exit 1
+fi
+
 echo "Job $SLURM_JOB_ID running on $(hostname)"
 echo "Run directory: $run_dir"
 
@@ -89,8 +96,6 @@ exit_code=0
 srun --export=ALL \
     --ntasks-per-node=1 \
     --cpus-per-task="$SLURM_CPUS_PER_TASK" \
-    env SLURM_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK" \
-        SLURM_NNODES="$SLURM_NNODES" \
     ./build/orchestrator --dir "$DATA_DIR" \
     > "$run_dir/stdout.txt" \
     2> "$run_dir/stderr.txt" \
