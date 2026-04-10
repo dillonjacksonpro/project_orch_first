@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
+#SBATCH --job-name=hpc_orch
+#SBATCH --nodes=1
+#SBATCH --ntasks=2
+#SBATCH --cpus-per-task=4
+#SBATCH --time=1:00:00
+#SBATCH --output=runs/slurm-%j.log
+#SBATCH --error=runs/slurm-%j.log
+
 # Runner script for the HPC orchestrator.
-# Usage: ./run.sh <config-file>
+# Usage: sbatch [--ntasks=N] [--cpus-per-task=C] [--partition=P] run.sh <config-file>
 #
-# From a login node: submits itself to SLURM via sbatch with the correct
-# resource flags, then exits. The job re-runs this script and goes to the
-# srun branch directly.
-#
-# From a compute node (inside an existing allocation): skips sbatch and runs
-# srun immediately against the current allocation.
+# SLURM resources are set via #SBATCH directives above (overridable on the
+# sbatch command line). The config file controls DATA_DIR and OUTPUT_ROOT only.
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Argument validation and config parsing (always runs first)
+# Argument validation and config parsing
 # ---------------------------------------------------------------------------
 if [ $# -ne 1 ]; then
-    echo "Usage: $0 <config-file>" >&2
+    echo "Usage: sbatch run.sh <config-file>" >&2
     exit 1
 fi
 
@@ -26,9 +30,6 @@ if [ ! -f "$config_file" ]; then
 fi
 
 DATA_DIR=""
-SLURM_NTASKS=""
-SLURM_CPUS_PER_TASK=""
-SLURM_PARTITION=""
 OUTPUT_ROOT="runs"
 
 while IFS= read -r line; do
@@ -43,23 +44,16 @@ while IFS= read -r line; do
     value="${line#*=}"
 
     case "$key" in
-        DATA_DIR)             DATA_DIR="$value" ;;
-        SLURM_NTASKS)         SLURM_NTASKS="$value" ;;
-        SLURM_CPUS_PER_TASK)  SLURM_CPUS_PER_TASK="$value" ;;
-        SLURM_PARTITION)      SLURM_PARTITION="$value" ;;
-        OUTPUT_ROOT)          OUTPUT_ROOT="$value" ;;
-        *) echo "warning: unrecognised config key: $key" >&2 ;;
+        DATA_DIR)    DATA_DIR="$value" ;;
+        OUTPUT_ROOT) OUTPUT_ROOT="$value" ;;
+        *) ;;
     esac
 done < "$config_file"
 
-missing=0
-for var in DATA_DIR SLURM_NTASKS SLURM_CPUS_PER_TASK; do
-    if [ -z "${!var}" ]; then
-        echo "error: required config key missing: $var" >&2
-        missing=1
-    fi
-done
-[ "$missing" -ne 0 ] && exit 1
+if [ -z "$DATA_DIR" ]; then
+    echo "error: required config key missing: DATA_DIR" >&2
+    exit 1
+fi
 
 # Make DATA_DIR absolute relative to CWD.
 if [ "${DATA_DIR#/}" = "$DATA_DIR" ]; then
@@ -71,78 +65,33 @@ if [ ! -d "$DATA_DIR" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Helper: create a timestamped run directory
+# Create a timestamped run directory
 # ---------------------------------------------------------------------------
-make_run_dir() {
-    local timestamp
-    timestamp="$(date +%Y%m%d_%H%M%S)"
-    local base
-    if [ "${OUTPUT_ROOT#/}" = "$OUTPUT_ROOT" ]; then
-        base="$(pwd)/${OUTPUT_ROOT}"
-    else
-        base="${OUTPUT_ROOT}"
-    fi
-    local dir="${base}/${timestamp}"
-    mkdir -p "$dir"
-    cp "$config_file" "$dir/config.cfg"
-    echo "$dir"
-}
-
-# ---------------------------------------------------------------------------
-# In-job branch: inside a SLURM allocation — run srun directly.
-# Reached either via sbatch self-submission (RUN_DIR already exported)
-# or when the user runs the script directly on a compute node.
-# ---------------------------------------------------------------------------
-if [ -n "${SLURM_JOB_ID:-}" ]; then
-    # If submitted via sbatch, RUN_DIR is already set in the environment.
-    # If run directly on a compute node, create it now.
-    if [ -z "${RUN_DIR:-}" ]; then
-        RUN_DIR="$(make_run_dir)"
-    fi
-
-    # SLURM_MEM_PER_CPU (from partition DefMemPerCPU) and SLURM_MEM_PER_NODE
-    # are mutually exclusive from srun's perspective — drop the node-level one.
-    unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
-
-    echo "Job $SLURM_JOB_ID running on $(hostname)"
-    echo "Run directory: $RUN_DIR"
-
-    exit_code=0
-    srun --export=ALL \
-        ./build/orchestrator --dir "$DATA_DIR" \
-        > "$RUN_DIR/stdout.txt" \
-        2> "$RUN_DIR/stderr.txt" \
-        || exit_code=$?
-
-    echo "$exit_code" > "$RUN_DIR/exit_code.txt"
-    echo "Exit code: $exit_code"
-    exit "$exit_code"
+timestamp="$(date +%Y%m%d_%H%M%S)"
+if [ "${OUTPUT_ROOT#/}" = "$OUTPUT_ROOT" ]; then
+    run_dir="$(pwd)/${OUTPUT_ROOT}/${timestamp}"
+else
+    run_dir="${OUTPUT_ROOT}/${timestamp}"
 fi
+mkdir -p "$run_dir"
+cp "$config_file" "$run_dir/config.cfg"
 
 # ---------------------------------------------------------------------------
-# Login-node branch: submit this script to sbatch with correct resources.
-# The job re-runs this script; SLURM_JOB_ID triggers the in-job branch above.
+# Run
 # ---------------------------------------------------------------------------
-RUN_DIR="$(make_run_dir)"
+# SLURM_MEM_PER_CPU and SLURM_MEM_PER_NODE are mutually exclusive for srun.
+unset SLURM_MEM_PER_NODE SLURM_MEM_PER_GPU
 
-partition_flag=""
-if [ -n "$SLURM_PARTITION" ]; then
-    partition_flag="--partition=$SLURM_PARTITION"
-fi
+echo "Job $SLURM_JOB_ID running on $(hostname)"
+echo "Run directory: $run_dir"
 
-# --parsable outputs "jobid" or "jobid;cluster" on federated setups.
-job_id=$(sbatch --parsable \
-    --nodes=1 \
-    -n "$SLURM_NTASKS" \
-    --cpus-per-task="$SLURM_CPUS_PER_TASK" \
-    ${partition_flag:+$partition_flag} \
-    --chdir="$(pwd)" \
-    --export="ALL,RUN_DIR=$RUN_DIR,DATA_DIR=$DATA_DIR" \
-    --output="$RUN_DIR/job.log" \
-    --error="$RUN_DIR/job.log" \
-    "$(realpath "$0")" "$config_file" | cut -d';' -f1)
+exit_code=0
+srun --export=ALL \
+    ./build/orchestrator --dir "$DATA_DIR" \
+    > "$run_dir/stdout.txt" \
+    2> "$run_dir/stderr.txt" \
+    || exit_code=$?
 
-echo "Job ID:       $job_id"
-echo "Run dir:      $RUN_DIR"
-echo "stdout:       tail -f $RUN_DIR/stdout.txt"
-echo "stderr/logs:  tail -f $RUN_DIR/job.log"
+echo "$exit_code" > "$run_dir/exit_code.txt"
+echo "Exit code: $exit_code"
+exit "$exit_code"

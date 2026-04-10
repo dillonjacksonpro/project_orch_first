@@ -1,21 +1,13 @@
 # run.cfg.example — copy to run.cfg and adjust values before use.
-# Run from the repo root: bash run.sh run.cfg
+# Submit from the repo root: sbatch run.sh run.cfg
+#
+# SLURM resources (ntasks, cpus-per-task, partition, time) are set via
+# #SBATCH directives in run.sh; override them on the sbatch command line:
+#   sbatch --ntasks=4 --cpus-per-task=8 --partition=compute run.sh run.cfg
 
 # Path to the directory of input files (required).
 # Relative paths are resolved from the current working directory.
 DATA_DIR=tests/e2e/data
-
-# Number of MPI ranks (required).
-SLURM_NTASKS=2
-
-# SLURM partition to submit to (optional; omit to use the cluster default).
-# SLURM_PARTITION=compute
-
-# Threads available per rank (required).
-# Rank 0 reserves one thread for the comm thread, so it runs N-1 workers.
-# Non-root ranks run N workers (comm thread shares a core).
-# Minimum value: 2 (so rank 0 has at least 1 worker).
-SLURM_CPUS_PER_TASK=4
 
 # Base directory for run output (optional, default: runs/).
 # Each invocation creates a timestamped subdirectory:
