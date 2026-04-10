@@ -8,7 +8,7 @@
 #SBATCH --error=runs/slurm-%j.log
 
 # Runner script for the HPC orchestrator.
-# Usage: sbatch [--ntasks=N] [--cpus-per-task=C] [--partition=P] run.sh <config-file>
+# Usage: sbatch [--ntasks=N] [--cpus-per-task=C]  [--partition=P] run.sh <config-file>
 #
 # SLURM resources are set via #SBATCH directives above (overridable on the
 # sbatch command line). The config file controls DATA_DIR and OUTPUT_ROOT only.
