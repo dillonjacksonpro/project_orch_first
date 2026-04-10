@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=hpc_orch
-#SBATCH --nodes=1
-#SBATCH --ntasks=2
+#SBATCH --nodes=4
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=1:00:00
 #SBATCH --output=runs/slurm-%j.log
@@ -87,6 +87,8 @@ echo "Run directory: $run_dir"
 
 exit_code=0
 srun --export=ALL \
+    --ntasks-per-node=1 \
+    --cpus-per-task="$SLURM_CPUS_PER_TASK" \
     ./build/orchestrator --dir "$DATA_DIR" \
     > "$run_dir/stdout.txt" \
     2> "$run_dir/stderr.txt" \
