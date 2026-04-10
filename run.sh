@@ -89,6 +89,8 @@ exit_code=0
 srun --export=ALL \
     --ntasks-per-node=1 \
     --cpus-per-task="$SLURM_CPUS_PER_TASK" \
+    env SLURM_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK" \
+        SLURM_NNODES="$SLURM_NNODES" \
     ./build/orchestrator --dir "$DATA_DIR" \
     > "$run_dir/stdout.txt" \
     2> "$run_dir/stderr.txt" \
